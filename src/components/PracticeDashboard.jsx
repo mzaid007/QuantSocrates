@@ -17,7 +17,8 @@ import {
   ShieldAlert,
   ChevronUp,
   ChevronDown,
-  RotateCcw
+  RotateCcw,
+  X
 } from 'lucide-react';
 
 export default function PracticeDashboard({
@@ -37,6 +38,7 @@ export default function PracticeDashboard({
   const [feedback, setFeedback] = useState(null); // { isCorrect, hint, conceptualTrap, latexExplanation }
   const [chatHistory, setChatHistory] = useState([]);
   const [isLevelChangedNotification, setIsLevelChangedNotification] = useState(null);
+  const [showMobileHintSheet, setShowMobileHintSheet] = useState(false);
 
   const topicState = skillMatrix[activeTopicId] || { level: 1 };
   const currentTopicQuestions = QUESTION_BANK[activeTopicId] || QUESTION_BANK.arithmetic;
@@ -44,7 +46,6 @@ export default function PracticeDashboard({
   // Pick question based on current topic adaptive level
   useEffect(() => {
     const targetLevel = topicState.level || 1;
-    // Find question matching target level, or fallback
     const question = currentTopicQuestions.find((q) => q.level === targetLevel) || currentTopicQuestions[0];
     setCurrentQuestion(question);
     setSelectedOption('');
@@ -53,6 +54,7 @@ export default function PracticeDashboard({
     setFeedback(null);
     setAttemptCount(0);
     setChatHistory([]);
+    setShowMobileHintSheet(false);
   }, [activeTopicId, topicState.level]);
 
   if (!currentQuestion) return null;
@@ -68,10 +70,8 @@ export default function PracticeDashboard({
     const nextAttempt = attemptCount + 1;
     setAttemptCount(nextAttempt);
 
-    // Client-side quick check
     const isExactMatch = String(answerToTest).trim().toLowerCase() === String(currentQuestion.correctAnswer).trim().toLowerCase();
 
-    // Call Socratic Tutor API (/api/tutor.js) for AI explanation/hint
     try {
       const response = await fetch('/api/tutor', {
         method: 'POST',
@@ -94,8 +94,8 @@ export default function PracticeDashboard({
       }
 
       setFeedback(resData);
+      setShowMobileHintSheet(true); // Open mobile hint bottom drawer automatically on answer submit!
 
-      // Append to Socratic Chat history
       const newChatMessage = {
         studentAnswer: answerToTest,
         isCorrect: resData.isCorrect,
@@ -105,11 +105,9 @@ export default function PracticeDashboard({
       };
       setChatHistory((prev) => [...prev, newChatMessage]);
 
-      // If correct answer OR maximum attempts (2), trigger adaptive level update
       if (resData.isCorrect || nextAttempt >= 2) {
         processAdaptiveStep(resData.isCorrect, answerToTest, resData);
       } else {
-        // If wrong on first attempt, log error locally/database
         onRecordError({
           topicKey: activeTopicId,
           topicName: activeTopicId,
@@ -126,11 +124,12 @@ export default function PracticeDashboard({
         isCorrect: isExactMatch,
         hint: isExactMatch
           ? "Excellent solution! You correctly identified the target relationship."
-          : `Hint: Examine the expression for ${currentQuestion.topicKey || 'this topic'}. Did you check for operational trap: "${currentQuestion.trap}"?`,
+          : `Hint: Examine the expression for ${activeTopicId}. Did you check for operational trap: "${currentQuestion.trap}"?`,
         conceptualTrap: isExactMatch ? "None" : currentQuestion.trap,
         latexExplanation: currentQuestion.explanation
       };
       setFeedback(fallbackFeedback);
+      setShowMobileHintSheet(true);
       setChatHistory((prev) => [...prev, {
         studentAnswer: answerToTest,
         isCorrect: isExactMatch,
@@ -160,7 +159,6 @@ export default function PracticeDashboard({
 
     setTimeout(() => setIsLevelChangedNotification(null), 4000);
 
-    // Sync with MongoDB backend or LocalStorage
     await syncProgressWithAPI({
       userEmail: 'student@example.com',
       topicKey: activeTopicId,
@@ -176,7 +174,6 @@ export default function PracticeDashboard({
 
   // Next Question Action
   const handleNextQuestion = () => {
-    // Pick another question or cycle level
     const nextQIndex = (currentTopicQuestions.findIndex((q) => q.id === currentQuestion.id) + 1) % currentTopicQuestions.length;
     setCurrentQuestion(currentTopicQuestions[nextQIndex]);
     setSelectedOption('');
@@ -184,6 +181,7 @@ export default function PracticeDashboard({
     setFeedback(null);
     setAttemptCount(0);
     setChatHistory([]);
+    setShowMobileHintSheet(false);
   };
 
   return (
@@ -208,7 +206,7 @@ export default function PracticeDashboard({
       {/* Main Question & Workspace Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Left Column: Problem Display & Options (7 Cols) */}
+        {/* Left Column: Problem Display, Inline Socratic Card, & Options (7 Cols) */}
         <div className="lg:col-span-7 space-y-5">
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl relative overflow-hidden">
             
@@ -225,7 +223,7 @@ export default function PracticeDashboard({
 
               <button
                 onClick={() => setShowScratchpad(!showScratchpad)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all flex items-center gap-1.5 min-h-[36px] ${
                   showScratchpad
                     ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
                     : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-slate-200'
@@ -280,10 +278,10 @@ export default function PracticeDashboard({
                       key={idx}
                       disabled={isEvaluating}
                       onClick={() => setSelectedOption(option)}
-                      className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between ${optionStyle}`}
+                      className={`w-full text-left p-4 min-h-[52px] rounded-2xl border transition-all flex items-center justify-between ${optionStyle}`}
                     >
                       <MathRenderer content={option} className="text-sm font-medium" />
-                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
                         isSelected ? 'border-emerald-400 bg-emerald-400 text-slate-950' : 'border-slate-700'
                       }`}>
                         {isSelected && <CheckCircle2 className="w-4 h-4 font-bold" />}
@@ -306,12 +304,44 @@ export default function PracticeDashboard({
               </div>
             )}
 
+            {/* 🌟 CRITICAL MOBILE-FIRST ENHANCEMENT: INLINE SOCRATIC AI FEEDBACK CARD */}
+            {feedback && (
+              <div className="mb-6 p-4 rounded-2xl border animate-fade-in shadow-xl bg-slate-950/90 border-cyan-500/40">
+                <div className="flex items-center justify-between mb-2 border-b border-slate-800/80 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                      <Brain className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs font-bold text-slate-100">
+                      {feedback.isCorrect ? 'Correct Solution!' : 'Socratic Micro-Hint'}
+                    </span>
+                  </div>
+                  {feedback.conceptualTrap && feedback.conceptualTrap !== 'None' && (
+                    <span className="text-[10px] font-semibold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                      Trap: {feedback.conceptualTrap}
+                    </span>
+                  )}
+                </div>
+
+                {/* Socratic Hint Text */}
+                <MathRenderer content={feedback.hint} className="text-xs text-slate-200 leading-relaxed mb-2" />
+
+                {/* Step-by-step KaTeX Explanation if correct or attempt >= 2 */}
+                {feedback.latexExplanation && (feedback.isCorrect || attemptCount >= 2) && (
+                  <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
+                    <span className="text-cyan-400 font-bold block mb-1">Step-by-Step KaTeX Explanation:</span>
+                    <MathRenderer content={feedback.latexExplanation} className="text-xs text-slate-200" />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Action Bar */}
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
               <button
                 disabled={!activeAnswer || isEvaluating}
                 onClick={() => handleSubmitAnswer()}
-                className="flex-1 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-extrabold text-sm transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 py-3.5 px-5 min-h-[48px] rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-extrabold text-sm transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isEvaluating ? (
                   <span>Consulting Socratic Tutor...</span>
@@ -323,10 +353,21 @@ export default function PracticeDashboard({
                 )}
               </button>
 
+              {!feedback && (
+                <button
+                  onClick={() => handleSubmitAnswer("HINT_REQUEST")}
+                  disabled={isEvaluating}
+                  className="py-3.5 px-4 min-h-[48px] rounded-2xl bg-slate-800/90 hover:bg-slate-800 text-cyan-300 text-xs font-bold border border-cyan-500/30 transition-all flex items-center justify-center gap-2"
+                >
+                  <Lightbulb className="w-4 h-4 text-amber-400" />
+                  <span>Request AI Micro-Hint</span>
+                </button>
+              )}
+
               {feedback && (
                 <button
                   onClick={handleNextQuestion}
-                  className="py-3.5 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm transition-all flex items-center gap-2"
+                  className="py-3.5 px-6 min-h-[48px] rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm transition-all flex items-center justify-center gap-2"
                 >
                   <span>Next Question</span>
                   <ArrowRight className="w-4 h-4" />
@@ -338,7 +379,7 @@ export default function PracticeDashboard({
 
         {/* Right Column: Socratic AI Chat & Micro-Hint Panel (5 Cols) */}
         <div className="lg:col-span-5 space-y-5">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col h-full min-h-[500px]">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col h-full min-h-[450px]">
             
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
@@ -430,6 +471,35 @@ export default function PracticeDashboard({
         </div>
 
       </div>
+
+      {/* 📱 MOBILE FLOATING AI HINT DRAWER TOGGLE (Visible on small screens when feedback exists) */}
+      {feedback && showMobileHintSheet && (
+        <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40 bg-slate-900/95 border border-cyan-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-fade-in">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-cyan-400" />
+              <span className="text-xs font-extrabold text-slate-100">
+                {feedback.isCorrect ? 'Solution Available!' : 'Socratic AI Hint Ready'}
+              </span>
+            </div>
+            <button onClick={() => setShowMobileHintSheet(false)} className="text-slate-400 hover:text-slate-200">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <MathRenderer content={feedback.hint} className="text-xs text-slate-200 line-clamp-2 mb-3" />
+          <button
+            onClick={() => {
+              // Scroll directly to the inline feedback card
+              window.scrollTo({ top: 300, behavior: 'smooth' });
+              setShowMobileHintSheet(false);
+            }}
+            className="w-full py-2 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1"
+          >
+            <span>View Full Explanation</span>
+            <ChevronUp className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
