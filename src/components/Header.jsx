@@ -1,12 +1,14 @@
 import React from 'react';
-import { Brain, Trophy, AlertTriangle, RefreshCw, Database, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Brain, Trophy, AlertTriangle, RefreshCw, Database, Sparkles, UserCheck, Cloud } from 'lucide-react';
 
 export default function Header({
   activeTab,
   setActiveTab,
   overallStats,
   onResetDiagnostic,
-  dbStatus
+  dbStatus,
+  userEmail,
+  onOpenSyncModal
 }) {
   return (
     <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 px-4 py-3">
@@ -47,7 +49,7 @@ export default function Header({
           </div>
         </div>
 
-        {/* Navigation Tabs & DB Sync Status */}
+        {/* Navigation Tabs, Cloud Sync & DB Status */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveTab('practice')}
@@ -73,9 +75,19 @@ export default function Header({
             Error Log
           </button>
 
+          {/* Sync / Resume Session Button */}
+          <button
+            onClick={onOpenSyncModal}
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 transition-all flex items-center gap-1.5 shadow-sm"
+            title="Save or resume cloud session using your email"
+          >
+            <Cloud className="w-3.5 h-3.5" />
+            <span className="max-w-[100px] truncate">{userEmail ? userEmail.split('@')[0] : 'Sync Session'}</span>
+          </button>
+
           {/* Database Sync Status Badge */}
           <div
-            className={`hidden sm:flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border ${
+            className={`hidden lg:flex items-center gap-1 px-2 py-1 text-[11px] rounded-lg border ${
               dbStatus
                 ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400'
                 : 'bg-slate-900 border-slate-800 text-slate-400'
@@ -83,7 +95,7 @@ export default function Header({
             title={dbStatus ? "Synced to MongoDB Atlas Free Tier" : "Saved locally (LocalStorage fallback)"}
           >
             <Database className="w-3 h-3" />
-            <span>{dbStatus ? 'MongoDB Online' : 'Local Persistence'}</span>
+            <span>{dbStatus ? 'MongoDB Online' : 'Local'}</span>
           </div>
 
           <button

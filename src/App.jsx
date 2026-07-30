@@ -3,13 +3,18 @@ import Header from './components/Header';
 import PracticeDashboard from './components/PracticeDashboard';
 import ErrorLog from './components/ErrorLog';
 import DiagnosticModal from './components/DiagnosticModal';
+import UserSyncModal from './components/UserSyncModal';
 import {
   getLocalSkillMatrix,
   saveLocalSkillMatrix,
   getLocalErrorLogs,
   saveLocalErrorLog,
   isDiagnosticCompleted,
-  setDiagnosticCompleted
+  setDiagnosticCompleted,
+  getUserEmail,
+  setUserEmail,
+  fetchCloudProgress,
+  syncProgressWithAPI
 } from './lib/storage';
 import { calculateOverallStats } from './lib/adaptiveEngine';
 
@@ -20,6 +25,8 @@ export default function App() {
   const [errorLogs, setErrorLogs] = useState(() => getLocalErrorLogs());
   const [showDiagnostic, setShowDiagnostic] = useState(() => !isDiagnosticCompleted());
   const [dbStatus, setDbStatus] = useState(false);
+  const [userEmail, setUserEmailState] = useState(() => getUserEmail());
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   // Sync skill Matrix whenever it changes locally
   useEffect(() => {
@@ -30,17 +37,15 @@ export default function App() {
   useEffect(() => {
     async function checkDB() {
       try {
-        const res = await fetch('/api/progress/get?email=student@example.com');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.dbConnected) {
-            setDbStatus(true);
-            if (data.user?.skillMatrix) {
-              setSkillMatrix(data.user.skillMatrix);
-            }
-            if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
-              setErrorLogs(data.errorLogs);
-            }
+        const emailToFetch = userEmail || 'student@example.com';
+        const data = await fetchCloudProgress(emailToFetch);
+        if (data && data.dbConnected) {
+          setDbStatus(true);
+          if (data.user?.skillMatrix) {
+            setSkillMatrix(data.user.skillMatrix);
+          }
+          if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
+            setErrorLogs(data.errorLogs);
           }
         }
       } catch (err) {
@@ -48,7 +53,39 @@ export default function App() {
       }
     }
     checkDB();
-  }, []);
+  }, [userEmail]);
+
+  // Handle manual saving of progress for an email
+  const handleSaveProgress = async (email) => {
+    setUserEmail(email);
+    setUserEmailState(email);
+    const res = await syncProgressWithAPI({
+      userEmail: email,
+      updatedSkillMatrix: skillMatrix
+    });
+    if (res && res.dbConnected) setDbStatus(true);
+    return res;
+  };
+
+  // Handle loading cloud session for an email
+  const handleLoadProgress = async (email) => {
+    setUserEmail(email);
+    setUserEmailState(email);
+    const data = await fetchCloudProgress(email);
+    if (data && data.dbConnected && data.user) {
+      setDbStatus(true);
+      if (data.user.skillMatrix) {
+        setSkillMatrix(data.user.skillMatrix);
+        saveLocalSkillMatrix(data.user.skillMatrix);
+      }
+      if (Array.isArray(data.errorLogs)) {
+        setErrorLogs(data.errorLogs);
+        localStorage.setItem('quantsocrates_error_logs', JSON.stringify(data.errorLogs));
+      }
+      return true;
+    }
+    return false;
+  };
 
   // Diagnostic Onboarding complete callback
   const handleCompleteDiagnostic = (matrixFromDiagnostic) => {
@@ -90,6 +127,8 @@ export default function App() {
         overallStats={overallStats}
         onResetDiagnostic={handleResetDiagnostic}
         dbStatus={dbStatus}
+        userEmail={userEmail}
+        onOpenSyncModal={() => setIsSyncModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -116,6 +155,15 @@ export default function App() {
       {showDiagnostic && (
         <DiagnosticModal onCompleteDiagnostic={handleCompleteDiagnostic} />
       )}
+
+      {/* User Cloud Sync / Resume Modal */}
+      <UserSyncModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        currentEmail={userEmail}
+        onSaveProgress={handleSaveProgress}
+        onLoadProgress={handleLoadProgress}
+      />
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-400">

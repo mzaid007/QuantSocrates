@@ -4,8 +4,26 @@ const STORAGE_KEYS = {
   SKILL_MATRIX: 'quantsocrates_skill_matrix',
   ERROR_LOGS: 'quantsocrates_error_logs',
   DIAGNOSTIC_DONE: 'quantsocrates_diagnostic_done',
-  USER_PROFILE: 'quantsocrates_user_profile'
+  USER_EMAIL: 'quantsocrates_user_email'
 };
+
+/**
+ * Get Saved User Email
+ */
+export function getUserEmail() {
+  return localStorage.getItem(STORAGE_KEYS.USER_EMAIL) || '';
+}
+
+/**
+ * Save User Email
+ */
+export function setUserEmail(email) {
+  if (email) {
+    localStorage.setItem(STORAGE_KEYS.USER_EMAIL, email.trim().toLowerCase());
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.USER_EMAIL);
+  }
+}
 
 /**
  * Get Local Skill Matrix
@@ -16,7 +34,6 @@ export function getLocalSkillMatrix() {
     if (!raw) return INITIAL_SKILL_MATRIX;
     return JSON.parse(raw);
   } catch (e) {
-    console.warn('Failed to read skillMatrix from LocalStorage', e);
     return INITIAL_SKILL_MATRIX;
   }
 }
@@ -60,7 +77,6 @@ export function saveLocalErrorLog(errorItem) {
     localStorage.setItem(STORAGE_KEYS.ERROR_LOGS, JSON.stringify(updated.slice(0, 100)));
     return updated;
   } catch (e) {
-    console.warn('Failed to save error log to LocalStorage', e);
     return [];
   }
 }
@@ -83,7 +99,13 @@ export function setDiagnosticCompleted(done = true) {
  * Synchronize Problem Result with Serverless API (MongoDB) with graceful LocalStorage fallback
  */
 export async function syncProgressWithAPI(payload) {
-  // Always save locally first for instant feedback
+  const currentEmail = getUserEmail() || 'student@example.com';
+  const fullPayload = {
+    userEmail: currentEmail,
+    ...payload
+  };
+
+  // Save locally first for instant UI response
   if (payload.updatedSkillMatrix) {
     saveLocalSkillMatrix(payload.updatedSkillMatrix);
   }
@@ -98,23 +120,33 @@ export async function syncProgressWithAPI(payload) {
     });
   }
 
-  // Attempt serverless API sync
   try {
     const response = await fetch('/api/progress/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(fullPayload)
     });
 
-    if (!response.ok) {
-      console.info('API returned non-200 status, using LocalStorage state.');
-      return { dbConnected: false };
-    }
+    if (!response.ok) return { dbConnected: false };
 
     const data = await response.json();
     return data;
   } catch (err) {
-    console.info('Network/API offline, saved securely in LocalStorage.');
     return { dbConnected: false };
+  }
+}
+
+/**
+ * Fetch Cloud Progress by Email
+ */
+export async function fetchCloudProgress(email) {
+  if (!email) return null;
+  try {
+    const response = await fetch(`/api/progress/get?email=${encodeURIComponent(email)}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    return null;
   }
 }
