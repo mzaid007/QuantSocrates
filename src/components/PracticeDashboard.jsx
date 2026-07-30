@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import MathRenderer from './MathRenderer';
 import TopicSelector from './TopicSelector';
 import { QUESTION_BANK } from '../lib/questionBank';
@@ -39,6 +39,8 @@ export default function PracticeDashboard({
   const [chatHistory, setChatHistory] = useState([]);
   const [isLevelChangedNotification, setIsLevelChangedNotification] = useState(null);
   const [showMobileHintSheet, setShowMobileHintSheet] = useState(false);
+
+  const socraticCardRef = useRef(null);
 
   const topicState = skillMatrix[activeTopicId] || { level: 1 };
   const currentTopicQuestions = QUESTION_BANK[activeTopicId] || QUESTION_BANK.arithmetic;
@@ -304,9 +306,12 @@ export default function PracticeDashboard({
               </div>
             )}
 
-            {/* 🌟 CRITICAL MOBILE-FIRST ENHANCEMENT: INLINE SOCRATIC AI FEEDBACK CARD */}
+            {/* 🌟 INLINE SOCRATIC AI FEEDBACK CARD (WITH TARGET SCROLL REF) */}
             {feedback && (
-              <div className="mb-6 p-4 rounded-2xl border animate-fade-in shadow-xl bg-slate-950/90 border-cyan-500/40">
+              <div
+                ref={socraticCardRef}
+                className="mb-6 p-4 rounded-2xl border animate-fade-in shadow-xl bg-slate-950/90 border-cyan-500/40 scroll-mt-24"
+              >
                 <div className="flex items-center justify-between mb-2 border-b border-slate-800/80 pb-2">
                   <div className="flex items-center gap-2">
                     <div className="p-1 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
@@ -472,7 +477,7 @@ export default function PracticeDashboard({
 
       </div>
 
-      {/* 📱 MOBILE FLOATING AI HINT DRAWER TOGGLE (Visible on small screens when feedback exists) */}
+      {/* 📱 MOBILE FLOATING AI HINT DRAWER TOGGLE */}
       {feedback && showMobileHintSheet && (
         <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40 bg-slate-900/95 border border-cyan-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-fade-in">
           <div className="flex items-center justify-between mb-2">
@@ -489,8 +494,10 @@ export default function PracticeDashboard({
           <MathRenderer content={feedback.hint} className="text-xs text-slate-200 line-clamp-2 mb-3" />
           <button
             onClick={() => {
-              // Scroll directly to the inline feedback card
-              window.scrollTo({ top: 300, behavior: 'smooth' });
+              // Precise smooth scroll directly to the Socratic AI card element
+              if (socraticCardRef.current) {
+                socraticCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
               setShowMobileHintSheet(false);
             }}
             className="w-full py-2 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1"
