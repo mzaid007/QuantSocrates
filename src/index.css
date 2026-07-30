@@ -7,6 +7,18 @@
   }
 }
 
+/* KaTeX mobile overflow safeguard */
+.math-renderer {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.katex-display {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  max-width: 100%;
+}
+
 /* Custom animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
