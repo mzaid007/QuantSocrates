@@ -18,31 +18,34 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  const { questionText, studentAnswer, correctAnswer, topic, difficultyLevel, isFirstAttempt } = req.body || {};
+
+  if (!questionText || studentAnswer === undefined) {
+    return res.status(400).json({ error: 'Missing required payload: questionText or studentAnswer' });
+  }
+
+  const isExactMatch = String(studentAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  // Fallback response generator helper
+  const getFallbackResponse = () => ({
+    isCorrect: isExactMatch,
+    hint: isExactMatch
+      ? "Spot on! Excellent quantitative intuition."
+      : `Hint: Examine the operational steps for ${topic || 'Quant'}. Did you account for common operational traps (e.g. multiplicative vs additive percentage shifts or sign changes)?`,
+    conceptualTrap: isExactMatch ? "None" : "Execution Slip / Conceptual Gap",
+    latexExplanation: `The correct target answer is **${correctAnswer}**. Step-by-step calculation: verify constraint equations carefully.`,
+    fallbackMode: true
+  });
+
+  // If GEMINI_API_KEY is not configured in Vercel environment variables, return fallback Socratic guidance
+  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '' || apiKey === 'your_gemini_api_key_here') {
+    return res.status(200).json(getFallbackResponse());
+  }
+
   try {
-    const { questionText, studentAnswer, correctAnswer, topic, difficultyLevel, isFirstAttempt } = req.body || {};
-
-    if (!questionText || studentAnswer === undefined) {
-      return res.status(400).json({ error: 'Missing required payload: questionText or studentAnswer' });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    
-    // If no API key is configured in environment, return a smart fallback Socratic response
-    if (!apiKey) {
-      const isMatch = String(studentAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
-      return res.status(200).json({
-        isCorrect: isMatch,
-        hint: isMatch
-          ? "Great work! You correctly solved this problem."
-          : `Hint: Re-check your operational steps. Did you check for common trap in ${topic || 'Quant'}: multiplicative vs additive percentage shifts?`,
-        conceptualTrap: isMatch ? "None" : "Additive Fallacy / Execution Slip",
-        latexExplanation: `The target answer is **${correctAnswer}**. Verify equation constraints carefully.`,
-        fallbackMode: true
-      });
-    }
-
-    // Initialize Official GoogleGenAI SDK with options object
-    const ai = new GoogleGenAI({ apiKey });
+    // Initialize Official GoogleGenAI SDK
+    const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
 
     const systemPrompt = `You are QuantSocrates, an expert MBA Math Tutor specializing in CAT, GMAT, and GRE quantitative reasoning.
 Your goal is to guide students using pure SOCRATIC METHODOLOGY.
@@ -90,30 +93,13 @@ Evaluate the student's answer. Respond STRICTLY in valid JSON.
       parsed = JSON.parse(cleanedText);
     } catch (parseError) {
       console.error("Gemini JSON Parse Error:", parseError, "Raw output:", responseText);
-      const isMatch = String(studentAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
-      parsed = {
-        isCorrect: isMatch,
-        hint: isMatch
-          ? "Spot on! Excellent quantitative intuition."
-          : "Review the question statement carefully. What information might you have overlooked?",
-        conceptualTrap: isMatch ? "None" : "Execution Slip",
-        latexExplanation: `The correct answer is $${correctAnswer}$.`
-      };
+      parsed = getFallbackResponse();
     }
 
     return res.status(200).json(parsed);
   } catch (error) {
     console.error('Tutor API Error:', error);
-    // Return graceful Socratic response if Gemini API call encounters errors
-    const isMatch = String(studentAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
-    return res.status(200).json({
-      isCorrect: isMatch,
-      hint: isMatch
-        ? "Correct answer! Excellent quantitative reasoning."
-        : "Hint: Review your initial assumptions. Did you test all edge cases or boundary conditions?",
-      conceptualTrap: isMatch ? "None" : "Conceptual Gap",
-      latexExplanation: `The target solution is $${correctAnswer}$.`,
-      fallbackMode: true
-    });
+    // Graceful fallback response on any Gemini API error
+    return res.status(200).json(getFallbackResponse());
   }
 }
