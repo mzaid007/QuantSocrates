@@ -18,6 +18,7 @@ import {
   ChevronUp,
   ChevronDown,
   RotateCcw,
+  RefreshCw,
   X
 } from 'lucide-react';
 
@@ -35,6 +36,7 @@ export default function PracticeDashboard({
   const [showScratchpad, setShowScratchpad] = useState(false);
   const [attemptCount, setAttemptCount] = useState(0);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [feedback, setFeedback] = useState(null); // { isCorrect, hint, conceptualTrap, latexExplanation }
   const [chatHistory, setChatHistory] = useState([]);
   const [isLevelChangedNotification, setIsLevelChangedNotification] = useState(null);
@@ -58,6 +60,43 @@ export default function PracticeDashboard({
     setChatHistory([]);
     setShowMobileHintSheet(false);
   }, [activeTopicId, topicState.level]);
+
+  // Generate a brand new AI CAT/GMAT Question on demand
+  const handleGenerateFreshAiQuestion = async () => {
+    if (isGeneratingQuestion) return;
+    setIsGeneratingQuestion(true);
+
+    try {
+      const response = await fetch('/api/generate-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: activeTopicId,
+          topicName: activeTopicId,
+          difficultyLevel: topicState.level || 1
+        })
+      });
+
+      if (response.ok) {
+        const freshQ = await response.json();
+        setCurrentQuestion(freshQ);
+        setSelectedOption('');
+        setCustomInput('');
+        setScratchpadText('');
+        setFeedback(null);
+        setAttemptCount(0);
+        setChatHistory([]);
+        setShowMobileHintSheet(false);
+      } else {
+        throw new Error('Failed to generate AI question');
+      }
+    } catch (err) {
+      console.warn('Fallback to next static question:', err);
+      handleNextQuestion();
+    } finally {
+      setIsGeneratingQuestion(false);
+    }
+  };
 
   if (!currentQuestion) return null;
 
@@ -96,7 +135,7 @@ export default function PracticeDashboard({
       }
 
       setFeedback(resData);
-      setShowMobileHintSheet(true); // Open mobile hint bottom drawer automatically on answer submit!
+      setShowMobileHintSheet(true);
 
       const newChatMessage = {
         studentAnswer: answerToTest,
@@ -126,9 +165,9 @@ export default function PracticeDashboard({
         isCorrect: isExactMatch,
         hint: isExactMatch
           ? "Excellent solution! You correctly identified the target relationship."
-          : `Hint: Examine the expression for ${activeTopicId}. Did you check for operational trap: "${currentQuestion.trap}"?`,
-        conceptualTrap: isExactMatch ? "None" : currentQuestion.trap,
-        latexExplanation: currentQuestion.explanation
+          : `Hint: Examine the expression for ${activeTopicId}. Did you check for operational trap: "${currentQuestion.trap || 'Execution Error'}"?`,
+        conceptualTrap: isExactMatch ? "None" : (currentQuestion.trap || 'Execution Error'),
+        latexExplanation: currentQuestion.explanation || `The target answer is $${currentQuestion.correctAnswer}$.`
       };
       setFeedback(fallbackFeedback);
       setShowMobileHintSheet(true);
@@ -212,8 +251,8 @@ export default function PracticeDashboard({
         <div className="lg:col-span-7 space-y-5">
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl relative overflow-hidden">
             
-            {/* Topic & Level Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            {/* Topic, Level, & Dynamic AI Badge Header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   {activeTopicId.toUpperCase()}
@@ -221,19 +260,36 @@ export default function PracticeDashboard({
                 <span className="text-xs text-slate-400 font-mono">
                   {getDifficultyLabel(currentQuestion.level)}
                 </span>
+                {currentQuestion.isAiGenerated && (
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-cyan-400" /> Dynamic AI Problem
+                  </span>
+                )}
               </div>
 
-              <button
-                onClick={() => setShowScratchpad(!showScratchpad)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all flex items-center gap-1.5 min-h-[36px] ${
-                  showScratchpad
-                    ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
-                    : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                {showScratchpad ? 'Hide Scratchpad' : 'Scratchpad'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleGenerateFreshAiQuestion}
+                  disabled={isGeneratingQuestion}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 transition-all flex items-center gap-1 disabled:opacity-50"
+                  title="Generate a brand new AI question for this level"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingQuestion ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">{isGeneratingQuestion ? 'Generating...' : 'Fresh AI Problem'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowScratchpad(!showScratchpad)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-xl border transition-all flex items-center gap-1.5 min-h-[32px] ${
+                    showScratchpad
+                      ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
+                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  {showScratchpad ? 'Hide Scratchpad' : 'Scratchpad'}
+                </button>
+              </div>
             </div>
 
             {/* Question Statement */}
@@ -306,7 +362,7 @@ export default function PracticeDashboard({
               </div>
             )}
 
-            {/* 🌟 INLINE SOCRATIC AI FEEDBACK CARD (WITH TARGET SCROLL REF) */}
+            {/* INLINE SOCRATIC AI FEEDBACK CARD */}
             {feedback && (
               <div
                 ref={socraticCardRef}
@@ -328,10 +384,8 @@ export default function PracticeDashboard({
                   )}
                 </div>
 
-                {/* Socratic Hint Text */}
                 <MathRenderer content={feedback.hint} className="text-xs text-slate-200 leading-relaxed mb-2" />
 
-                {/* Step-by-step KaTeX Explanation if correct or attempt >= 2 */}
                 {feedback.latexExplanation && (feedback.isCorrect || attemptCount >= 2) && (
                   <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
                     <span className="text-cyan-400 font-bold block mb-1">Step-by-Step KaTeX Explanation:</span>
@@ -370,13 +424,24 @@ export default function PracticeDashboard({
               )}
 
               {feedback && (
-                <button
-                  onClick={handleNextQuestion}
-                  className="py-3.5 px-6 min-h-[48px] rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm transition-all flex items-center justify-center gap-2"
-                >
-                  <span>Next Question</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleNextQuestion}
+                    className="py-3.5 px-4 min-h-[48px] rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <span>Next Question</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={handleGenerateFreshAiQuestion}
+                    disabled={isGeneratingQuestion}
+                    className="py-3.5 px-4 min-h-[48px] rounded-2xl bg-gradient-to-r from-cyan-600 to-teal-500 hover:from-cyan-500 hover:to-teal-400 text-slate-950 font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/20 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Fresh AI Challenge</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -411,7 +476,6 @@ export default function PracticeDashboard({
               ) : (
                 chatHistory.map((item, idx) => (
                   <div key={idx} className="space-y-3">
-                    {/* Student Submission Bubble */}
                     <div className="flex justify-end">
                       <div className="bg-slate-800 border border-slate-700 text-slate-200 px-4 py-2.5 rounded-2xl rounded-tr-none text-xs max-w-[85%]">
                         <span className="text-[10px] text-slate-400 block mb-0.5">Your Submission:</span>
@@ -419,7 +483,6 @@ export default function PracticeDashboard({
                       </div>
                     </div>
 
-                    {/* Socratic Feedback Card */}
                     <div className={`p-4 rounded-2xl border ${
                       item.isCorrect
                         ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-200'
@@ -443,10 +506,8 @@ export default function PracticeDashboard({
                         )}
                       </div>
 
-                      {/* Socratic Hint */}
                       <MathRenderer content={item.hint} className="text-xs text-slate-300 mb-3" />
 
-                      {/* LaTeX Explanation (if correct or 2nd attempt) */}
                       {item.explanation && (item.isCorrect || attemptCount >= 2) && (
                         <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
                           <span className="text-cyan-400 font-bold block mb-1">Step-by-Step KaTeX Explanation:</span>
@@ -459,7 +520,6 @@ export default function PracticeDashboard({
               )}
             </div>
 
-            {/* Hint Request Button */}
             {!feedback && (
               <div className="pt-3 border-t border-slate-800">
                 <button
@@ -477,7 +537,7 @@ export default function PracticeDashboard({
 
       </div>
 
-      {/* 📱 MOBILE FLOATING AI HINT DRAWER TOGGLE */}
+      {/* MOBILE FLOATING AI HINT DRAWER */}
       {feedback && showMobileHintSheet && (
         <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40 bg-slate-900/95 border border-cyan-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-fade-in">
           <div className="flex items-center justify-between mb-2">
@@ -494,7 +554,6 @@ export default function PracticeDashboard({
           <MathRenderer content={feedback.hint} className="text-xs text-slate-200 line-clamp-2 mb-3" />
           <button
             onClick={() => {
-              // Precise smooth scroll directly to the Socratic AI card element
               if (socraticCardRef.current) {
                 socraticCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
