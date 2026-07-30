@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { questionText, studentAnswer, correctAnswer, topic, difficultyLevel, isMultipleChoice, isFirstAttempt } = req.body || {};
+    const { questionText, studentAnswer, correctAnswer, topic, difficultyLevel, isFirstAttempt } = req.body || {};
 
     if (!questionText || studentAnswer === undefined) {
       return res.status(400).json({ error: 'Missing required payload: questionText or studentAnswer' });
@@ -27,22 +27,22 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.GEMINI_API_KEY;
     
-    // If no API key is available, generate an fallback Socratic response
+    // If no API key is configured in environment, return a smart fallback Socratic response
     if (!apiKey) {
       const isMatch = String(studentAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
       return res.status(200).json({
         isCorrect: isMatch,
         hint: isMatch
           ? "Great work! You correctly solved this problem."
-          : "Consider re-checking your steps. Did you check all edge cases or sign changes in your algebra?",
-        conceptualTrap: isMatch ? "None" : "Calculation or Formula Error",
-        latexExplanation: `The correct answer is **${correctAnswer}**. Step-by-step solution calculation: verify equation constraints carefully.`,
+          : `Hint: Re-check your operational steps. Did you check for common trap in ${topic || 'Quant'}: multiplicative vs additive percentage shifts?`,
+        conceptualTrap: isMatch ? "None" : "Additive Fallacy / Execution Slip",
+        latexExplanation: `The target answer is **${correctAnswer}**. Verify equation constraints carefully.`,
         fallbackMode: true
       });
     }
 
-    // Initialize Official GoogleGenAI SDK
-    const ai = new GoogleGenAI();
+    // Initialize Official GoogleGenAI SDK with options object
+    const ai = new GoogleGenAI({ apiKey });
 
     const systemPrompt = `You are QuantSocrates, an expert MBA Math Tutor specializing in CAT, GMAT, and GRE quantitative reasoning.
 Your goal is to guide students using pure SOCRATIC METHODOLOGY.
@@ -86,7 +86,6 @@ Evaluate the student's answer. Respond STRICTLY in valid JSON.
     
     let parsed;
     try {
-      // Clean JSON formatting if enclosed in codeblocks
       const cleanedText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       parsed = JSON.parse(cleanedText);
     } catch (parseError) {
@@ -105,9 +104,16 @@ Evaluate the student's answer. Respond STRICTLY in valid JSON.
     return res.status(200).json(parsed);
   } catch (error) {
     console.error('Tutor API Error:', error);
-    return res.status(500).json({
-      error: 'Failed to process Socratic tutor response',
-      details: error.message
+    // Return graceful Socratic response if Gemini API call encounters errors
+    const isMatch = String(studentAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
+    return res.status(200).json({
+      isCorrect: isMatch,
+      hint: isMatch
+        ? "Correct answer! Excellent quantitative reasoning."
+        : "Hint: Review your initial assumptions. Did you test all edge cases or boundary conditions?",
+      conceptualTrap: isMatch ? "None" : "Conceptual Gap",
+      latexExplanation: `The target solution is $${correctAnswer}$.`,
+      fallbackMode: true
     });
   }
 }
