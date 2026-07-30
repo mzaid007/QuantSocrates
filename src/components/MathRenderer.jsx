@@ -68,7 +68,7 @@ export default function MathRenderer({ content, className = '' }) {
           inlineParts.push(
             <span
               key={`inline-${index}-${inlineMatch.index}`}
-              className="inline-block px-1 text-emerald-300 font-mono"
+              className="inline-block px-1 text-emerald-300 font-mono max-w-full overflow-x-auto align-middle"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
@@ -87,5 +87,5 @@ export default function MathRenderer({ content, className = '' }) {
     });
   }, [content]);
 
-  return <div className={`math-renderer leading-relaxed ${className}`}>{renderedElements}</div>;
+  return <div className={`math-renderer leading-relaxed overflow-hidden ${className}`}>{renderedElements}</div>;
 }
